@@ -137,8 +137,8 @@ int main(int argc, char **argv)
   
   time_t tnow = time(0);
   struct tm *now = localtime(&tnow);
-  char timeDate[14];
-  strftime(timeDate, 14, "%d%m%Y_%H%M", now);  
+  char timeDate[16];
+  strftime(timeDate, 16, "%d%m%Y_%H%M%S", now);  
 
   char strtmp[128];
   FILE *pPlotFile = 0;
