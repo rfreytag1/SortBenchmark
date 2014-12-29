@@ -3,6 +3,6 @@
 
 typedef char* (*getSortNameFn_t)(void);
 typedef char* (*getSortSymbolFn_t)(void);
-typedef void** (*sortFn_t)(void*, size_t, size_t, int (*)(void*,void*));
+typedef void (*sortFn_t)(void*, size_t, size_t, int (*)(void*,void*));
 
 #endif
