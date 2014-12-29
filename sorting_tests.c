@@ -19,7 +19,7 @@ unsigned ipow(unsigned base, unsigned exp)
   if(exp == 0) return 1;
   unsigned i;
   unsigned tmp = base;
-  for(i = 1; i < exp; i++) tmp = tmp * tmp;
+  for(i = 1; i < exp; i++) tmp = tmp * base;
   return tmp;
 }
 
@@ -133,7 +133,7 @@ int main(int argc, char **argv)
 
   unsigned maxSortSize = calculateSortSize(sortSize0, runs, runSortSizeGrowthRate, runSortSizeGrowthType);
 
-  printf("Runs: %u\nMax. Values: %u\n", runs, maxSortSize);
+  printf("Runs: %u\nMin. Values: %u\nGrowth: %u\nGrowth-type: %u\nMax. Values: %u\n", runs, sortSize0, runSortSizeGrowthRate, runSortSizeGrowthType, maxSortSize);
   
   time_t tnow = time(0);
   struct tm *now = localtime(&tnow);
