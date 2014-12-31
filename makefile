@@ -16,4 +16,4 @@ $(EXEC): $(OBJECTS)
 	$(CXX) -o $@ $(OBJECTS) $(CXX_LFLAGS)
 
 %.o: %.c
-	$(CXX) $(CXX_FLAGS) $<
+	$(CXX) $(CXX_FLAGS) -o $@ $<

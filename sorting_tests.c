@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,8 +25,59 @@ unsigned ipow(unsigned base, unsigned exp)
   return tmp;
 }
 
+
+static int profileSwaps = 0;
+
+static unsigned long long *pTotalSwaps = 0;
+
+static int profileMemory = 0;
+static int recordMemory = 0;
+
+static size_t totalAllocations = 0;
+
+static void* (*o_malloc)(size_t) = 0;
+static void* (*o_realloc)(void*, size_t) = 0;
+static void* (*o_calloc)(size_t, size_t) = 0;
+//static void  (*o_free)(void*) = 0;
+
+void *malloc(size_t size)
+{
+  if(!o_malloc) o_malloc = dlsym(RTLD_NEXT, "malloc");
+  if(profileMemory && recordMemory)
+  {
+    totalAllocations += size;
+    //printf("Allocated %llu\n", (unsigned long long)size);
+  }
+  return o_malloc(size);
+}
+
+void *realloc(void* ptr, size_t size)
+{
+  if(!o_realloc) o_realloc = dlsym(RTLD_NEXT, "realloc");
+  if(profileMemory && recordMemory)
+  {
+    totalAllocations += size;
+    //printf("Allocated %llu\n", (unsigned long long)size);
+  }
+  return o_realloc(ptr, size);
+}
+
+void *calloc(size_t nmemb, size_t size)
+{
+  if(!o_calloc) o_calloc = dlsym(RTLD_NEXT, "calloc");
+  if(profileMemory && recordMemory)
+  {
+    totalAllocations += size * nmemb;
+    //printf("Allocated %llu\n", (unsigned long long)size);
+  }
+  return o_calloc(nmemb, size);
+}
+
+static unsigned long long runCompares = 0;
+
 int intCompare(void* a, void* b)
 {
+  runCompares++;
   int x = *((int*)a), y = *((int*)b);
   return (x < y)?-1:((x > y)?1:0);
 }
@@ -44,12 +97,29 @@ int isSortedIntegers(int *numbers, size_t n)
 void testIntegerSorting(sortFn_t f, int *numbers, size_t n, FILE* output)
 {
   //int i;
+  runCompares = 0;
+  totalAllocations = 0;
+  if(pTotalSwaps) *pTotalSwaps = 0;
+  recordMemory = 1;
   clock_t t = clock();
   f((void*)numbers, n, sizeof(int), intCompare);
   t = clock() - t;
+  recordMemory = 0;
   int valid = isSortedIntegers(numbers, n);
-  printf("%10llu %10.04lfms \e[38;5;%um%10s\e[0m\n", (unsigned long long)n, ((double)t * 1000)/CLOCKS_PER_SEC, valid?82:160, valid?"valid":"invalid");
-  if(output) fprintf(output, "%llu %lf\n", (unsigned long long)n, ((double)t * 1000)/CLOCKS_PER_SEC);
+  printf("%10llu %10llu %10llu %10llu %10.04lfms \e[38;5;%um%10s\e[0m\n",
+         (unsigned long long)n,
+         runCompares,
+         (pTotalSwaps)?*pTotalSwaps:0,
+         (profileMemory)?(unsigned long long)totalAllocations:0,
+         ((double)t * 1000)/CLOCKS_PER_SEC,
+         valid?82:160,
+         valid?"valid":"invalid");
+  if(output) fprintf(output, "%llu %lf %llu %llu %llu\n",
+                             (unsigned long long)n, ((double)t * 1000)/CLOCKS_PER_SEC,
+                             runCompares,
+                             (pTotalSwaps)?*pTotalSwaps:0,
+                             (profileMemory)?(unsigned long long)totalAllocations:0);
+  //printf("%llu\n", (unsigned long long)totalAllocations);
   //for(i = 0; i < n; i++) printf("%d\n", numbers[i]);
   //free(numberList);  
 }
@@ -79,20 +149,24 @@ int main(int argc, char **argv)
   strcpy(moduleFolder, "./");
 
   unsigned sortSize0 = 10, sortSize;
-  unsigned runs = 20;
+  unsigned runs = 5;
 
-  unsigned runSortSizeGrowthRate = 1;
+  unsigned runSortSizeGrowthRate = 2;
   unsigned runSortSizeGrowthType = 1;
+
+  int profileSwaps0 = 0;
 
 
   ArgList_t *pargs = arg_initArgs(argc, argv);
 
   ArgParam_t *aplot = arg_addParam(pargs, 'p', "plot");
-  ArgParam_t *amodules =   arg_addParam(pargs, 'm', "modules");
+  ArgParam_t *amodules =   arg_addParam(pargs, 'l', "libs");
   ArgParam_t *asortsize = arg_addParam(pargs, 's', "start-size");
   ArgParam_t *aruns = arg_addParam(pargs, 'r', "runs");
   ArgParam_t *agrowth = arg_addParam(pargs, 'g', "growth");
   ArgParam_t *agrowthtype = arg_addParam(pargs, 't', "growth-type");
+  ArgSwitch_t *aprofilemem = arg_addSwitch(pargs, 'm', "profile-memory"); 
+  ArgSwitch_t *aprofileswaps = arg_addSwitch(pargs, 'n', "profile-swaps");
 
   arg_parseArgs(pargs);
 
@@ -129,6 +203,13 @@ int main(int argc, char **argv)
     sscanf(agrowthtype->value, "%u", &runSortSizeGrowthType);
   }
 
+  if(aprofilemem->switched) profileMemory = 1;
+  if(aprofileswaps->switched) 
+  {
+    profileSwaps0 = 1;
+    profileSwaps = 1;
+  }
+
   arg_destroyArgs(pargs);
 
   unsigned maxSortSize = calculateSortSize(sortSize0, runs, runSortSizeGrowthRate, runSortSizeGrowthType);
@@ -142,11 +223,13 @@ int main(int argc, char **argv)
 
   char strtmp[128];
   FILE *pPlotFile = 0;
-
+  FILE *pPlotFileMem = 0;
+  FILE *pPlotFileSwap = 0;
+  FILE *pPlotFileComp = 0;
 
   if(outputPlotData)
   {
-    snprintf(strtmp, 127, "%s/sorts_%s.gp", plotFolder, timeDate);
+    snprintf(strtmp, 127, "%s/sorts_time_%s.gp", plotFolder, timeDate);
     pPlotFile = fopen(strtmp, "w");
     if(!pPlotFile)
     {
@@ -158,10 +241,55 @@ int main(int argc, char **argv)
                        "set ylabel \"Time(ms)\"\n"
                        "set autoscale\n"
                        "plot ");
+
+    snprintf(strtmp, 127, "%s/sorts_compares_%s.gp", plotFolder, timeDate);
+    pPlotFileComp = fopen(strtmp, "w");
+    if(!pPlotFileComp)
+    {
+      perror("Opening Plot-file failed!");
+      return 1;
+    }
+    fprintf(pPlotFileComp, "set title \"Sorting Algorithms Comparisons Benchmark\"\n"
+                       "set xlabel \"Worksize(Array-elements)\"\n"
+                       "set ylabel \"Comparisons\"\n"
+                       "set autoscale\n"
+                       "plot ");
+
+    if(profileMemory)
+    {
+      snprintf(strtmp, 127, "%s/sorts_memory_%s.gp", plotFolder, timeDate);
+      pPlotFileMem = fopen(strtmp, "w");
+      if(!pPlotFileMem)
+      {
+        perror("Opening Plot-file failed!");
+        return 1;
+      }
+      fprintf(pPlotFileMem, "set title \"Sorting Algorithms Memory Benchmark\"\n"
+                         "set xlabel \"Worksize(Array-elements)\"\n"
+                         "set ylabel \"Memory Usage\"\n"
+                         "set autoscale\n"
+                         "plot ");
+    }
+
+    if(profileSwaps)
+    {
+      snprintf(strtmp, 127, "%s/sorts_swaps_%s.gp", plotFolder, timeDate);
+      pPlotFileSwap = fopen(strtmp, "w");
+      if(!pPlotFileSwap)
+      {
+        perror("Opening Plot-file failed!");
+        return 1;
+      }
+      fprintf(pPlotFileSwap, "set title \"Sorting Algorithms Swaps Benchmark\"\n"
+                         "set xlabel \"Worksize(Array-elements)\"\n"
+                         "set ylabel \"Swaps\"\n"
+                         "set autoscale\n"
+                         "plot ");
+    }
   }
 
   DIR *modDir = opendir(moduleFolder);
-  free(moduleFolder);
+  //free(moduleFolder);
   if(!modDir)
   {
     perror("Opening module directory failed!");
@@ -170,6 +298,7 @@ int main(int argc, char **argv)
       fclose(pPlotFile);
       remove(strtmp);
     }
+    free(moduleFolder);
     return 1;
   }
 
@@ -203,12 +332,15 @@ int main(int argc, char **argv)
   {
     if(file->d_type & DT_REG && strstr(file->d_name, ".so"))
     {
-        char *fullPath = malloc(strlen(file->d_name) + 3);
+        char *fullPath = malloc(strlen(file->d_name) + strlen(moduleFolder) + 1);
+        /*
         fullPath[0] = '.';
         fullPath[1] = '/';
-        fullPath[2] = 0;
+        fullPath[2] = 0;*/
+        fullPath[0] = 0;
+        strcpy(fullPath, moduleFolder);
         strcat(fullPath, file->d_name);
-        libHandle = dlopen(fullPath, RTLD_LAZY);
+        libHandle = dlopen(fullPath, RTLD_NOW);
         if(!libHandle)
         {
           fprintf(stderr, "Loading \"%s\" failed!(%s)\n", fullPath, dlerror());
@@ -234,9 +366,20 @@ int main(int argc, char **argv)
           continue;
         }
 
+        pTotalSwaps = dlsym(libHandle, "totalSwaps");
+        if(profileSwaps0 && pTotalSwaps)
+        {
+          printf("Profiling swaps.\n");
+          profileSwaps = 1;
+        }
+        else
+        {
+          profileSwaps = 0;
+        }
+
         printf("Testing %s\n", sortNameFn());
         printf("Pre-Sorted:\n");
-        printf("%10s %12s %10s\n", "Values", "Time", "Validity");
+        printf("%10s %10s %10s %10s %12s %10s\n", "Values", "Compares", "Swaps", "Allocs", "Time", "Validity");
 
         FILE* plotData = 0;
 
@@ -257,11 +400,14 @@ int main(int argc, char **argv)
         if(outputPlotData)
         {
           fclose(plotData);
-          fprintf(pPlotFile, "\"%s\" u 1:2 t \"%s Sorted\" w points,", plotDataName, sortNameFn());
+          fprintf(pPlotFile, "\"%s\" u 1:2 t \"%s Time Sorted\" w points, ", plotDataName, sortNameFn());
+          fprintf(pPlotFileComp, "\"%s\" u 1:3 t \"%s Comparisons Sorted\" w points,", plotDataName, sortNameFn());
+          if(profileMemory && pPlotFileMem) fprintf(pPlotFileMem, "\"%s\" u 1:5 t \"%s Sorted\" w points, ", plotDataName, sortNameFn());
+          if(profileSwaps && pPlotFileSwap)  fprintf(pPlotFileSwap, "\"%s\" u 1:4 t \"%s Sorted\" w points, ", plotDataName, sortNameFn());
         }
 
         printf("Random:\n");
-        printf("%10s %12s %10s\n", "Values", "Time", "Validity");
+        printf("%10s %10s %10s %10s %12s %10s\n", "Values", "Compares", "Swaps", "Allocs", "Time", "Validity");
 
         if(outputPlotData)
         {
@@ -273,14 +419,19 @@ int main(int argc, char **argv)
         for(i = 0; i < runs; i++)
         {
           sortSize = calculateSortSize(sortSize0, i+1, runSortSizeGrowthRate, runSortSizeGrowthType);
+          //*totalSwaps = 0;
           testIntegerSorting(sortFn, randomNumbers, sortSize, plotData);
+          //printf("%llu\n", *totalSwaps);
           memcpy(randomNumbers, randomNumbers0, sizeof(int)*sortSize); //reset the sorted parts for the next run
         }
 
         if(outputPlotData)
         {
           fclose(plotData);
-          fprintf(pPlotFile, "\"%s\" u 1:2 t \"%s Random\" w points,", plotDataName, sortNameFn());
+          fprintf(pPlotFile, "\"%s\" u 1:2 t \"%s Time Random\" w points, ", plotDataName, sortNameFn());
+          fprintf(pPlotFileComp, "\"%s\" u 1:3 t \"%s Comparisons Random\" w points,", plotDataName, sortNameFn());
+          if(profileMemory && pPlotFileMem) fprintf(pPlotFileMem, "\"%s\" u 1:5 t \"%s Random\" w points, ", plotDataName, sortNameFn());
+          if(profileSwaps && pPlotFileSwap)  fprintf(pPlotFileSwap, "\"%s\" u 1:4 t \"%s Random\" w points, ", plotDataName, sortNameFn());
         }
        
         dlclose(libHandle);
@@ -290,8 +441,15 @@ int main(int argc, char **argv)
     }
   }
   closedir(modDir);
-  if(outputPlotData) fclose(pPlotFile);
+  if(outputPlotData)
+  {
+    fclose(pPlotFile);
+    fclose(pPlotFileComp);
+    if(profileMemory) fclose(pPlotFileMem);
+    if(profileSwaps)  fclose(pPlotFileSwap);
+  }
   
+  free(moduleFolder);
   free(randomNumbers);
   free(randomNumbers0);
   free(sortedNumbers);
