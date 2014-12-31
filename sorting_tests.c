@@ -40,6 +40,7 @@ static void* (*o_realloc)(void*, size_t) = 0;
 static void* (*o_calloc)(size_t, size_t) = 0;
 //static void  (*o_free)(void*) = 0;
 
+
 void *malloc(size_t size)
 {
   if(!o_malloc) o_malloc = dlsym(RTLD_NEXT, "malloc");
@@ -340,7 +341,7 @@ int main(int argc, char **argv)
         fullPath[0] = 0;
         strcpy(fullPath, moduleFolder);
         strcat(fullPath, file->d_name);
-        libHandle = dlopen(fullPath, RTLD_NOW);
+        libHandle = dlopen(fullPath, RTLD_LAZY);
         if(!libHandle)
         {
           fprintf(stderr, "Loading \"%s\" failed!(%s)\n", fullPath, dlerror());
@@ -438,6 +439,7 @@ int main(int argc, char **argv)
         sortFn = 0;
         sortNameFn = 0;
         sortSymbolFn = 0;
+        pTotalSwaps = 0;
     }
   }
   closedir(modDir);
@@ -446,7 +448,7 @@ int main(int argc, char **argv)
     fclose(pPlotFile);
     fclose(pPlotFileComp);
     if(profileMemory) fclose(pPlotFileMem);
-    if(profileSwaps)  fclose(pPlotFileSwap);
+    if(profileSwaps0)  fclose(pPlotFileSwap);
   }
   
   free(moduleFolder);
