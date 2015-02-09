@@ -1,5 +1,5 @@
 CXX=gcc
-CXX_FLAGS=-c -Wall
+CXX_FLAGS=-c -Wall -D_GNU_SOURCE
 CXX_LFLAGS=-ldl -lm
 SOURCES=sorting_tests.c list.c stack.c argParser.c
 OBJECTS=$(SOURCES:.c=.o)

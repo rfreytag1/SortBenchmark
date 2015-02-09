@@ -1,8 +1,8 @@
-/*
- * stack.c
+/**
+ * @file stack.c
  *
- *  Created on: 13.09.2014
- *      Author: pfannkuchen
+ * @date 13.09.2014
+ * @author Roy Freytag
  */
 
 #include <stdio.h>
@@ -10,6 +10,10 @@
 
 #include "stack.h"
 
+/**
+ * @brief Creates an empty stack.
+ * @return pointer to stack
+ */
 Stack_t *stk_createStack()
 {
 	Stack_t *tmp = malloc(sizeof(Stack_t));
@@ -18,6 +22,11 @@ Stack_t *stk_createStack()
 	return tmp;
 }
 
+/**
+ * @brief Pushes an Element onto the stack.
+ * @param stack on which stack to put the data
+ * @param data pointer to input data
+ */
 void stk_push(Stack_t *stack, void *data)
 {
 	StackElement_t *tmp = malloc(sizeof(StackElement_t));
@@ -27,6 +36,10 @@ void stk_push(Stack_t *stack, void *data)
 	stack->stackSize++;
 }
 
+/**
+ * @brief returns the top element of the stack and removes it.
+ * @param stack which stack to pop from
+ */
 void *stk_pop(Stack_t *stack)
 {
 	if(!stack->stackSize) return NULL;
@@ -38,6 +51,10 @@ void *stk_pop(Stack_t *stack)
 	return data;
 }
 
+/**
+ * @brief Removes all elements and frees the memory of the stack.
+ * @param stack
+ */
 void stk_destroyStack(Stack_t *stack)
 {
 	while(stack->stackSize) stk_pop(stack);

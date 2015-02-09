@@ -1,23 +1,37 @@
-/*
- * stack.h
+/**
+ * @file stack.h
  *
- *  Created on: 13.09.2014
- *      Author: pfannkuchen
+ * @date 13.09.2014
+ * @author Roy Freytag
  */
+
 
 #ifndef STACK_H_
 #define STACK_H_
 
+/**
+ * @file stack.h
+ * @brief a simple FILO Stack implementation
+ */
+
+/**
+ * @brief Definition of the Container-element
+ * which stores a pointer to the data and a pointer to the next element
+ */
 typedef struct StackElement
 {
-	struct StackElement *pNext;
-	void *data;
+	struct StackElement *pNext; ///< Pointer to next Stack Element
+	void *data; ///< Pointer to data
 } StackElement_t;
 
-typedef struct
+/**
+ * @brief Head of the stack
+ *
+ */
+typedef struct Stack
 {
-	StackElement_t *pFirst;
-	unsigned long stackSize;
+	StackElement_t *pFirst; ///< Pointer to first Stack Element
+	unsigned long stackSize; ///< contains the number of stack elements in this stack.
 } Stack_t;
 
 Stack_t *stk_createStack();

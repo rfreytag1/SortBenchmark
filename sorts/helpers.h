@@ -1,3 +1,10 @@
+/**
+ * @file helpers.h
+ * @date 18.12.2014
+ * @author Roy Freytag
+ *
+ * some helper functions to be used in sorting algorithms
+ */
 #ifndef __HELPERS_H__
 #define __HELPERS_H__
 
